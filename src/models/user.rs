@@ -12,9 +12,13 @@ pub struct UserInterface {
     pub name: String,
     pub firstname: String,
     pub email: String,
+    #[serde(rename = "creationStamp")]
     pub creation_stamp: NaiveDateTime,
+    #[serde(rename = "lastLogin")]
     pub last_login: Option<NaiveDateTime>,
     pub verified: bool,
+    #[serde(rename = "isAdmin")]
+    pub is_admin: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -23,6 +27,40 @@ pub struct User(Pool);
 impl User {
     pub fn new(pool: Pool) -> Self {
         User(pool)
+    }
+
+    pub async fn exists(&self, email: String) -> Result<(bool, Option<UserInterface>)> {
+        let client = self.0.get().await?;
+        let stmt = client.prepare_cached("
+            SELECT
+                cu.id,
+                cu.pseudo,
+                cu.name,
+                cu.firstname,
+                cu.email,
+                cu.creation_stamp,
+                cu.last_login,
+                cu.verified
+            FROM cnm_user cu
+            WHERE cu.email = $1 AND cu.verified IS TRUE;
+        ").await?;
+        let res = client.query(&stmt, &[&email]).await?.iter().map(|r| UserInterface {
+            id: r.get(0),
+            pseudo: r.get(1),
+            name: r.get(2),
+            firstname: r.get(3),
+            email: r.get(4),
+            creation_stamp: r.get(5),
+            last_login: r.get(6),
+            verified: r.get(7),
+            is_admin: None,
+        }).collect::<Vec<UserInterface>>();
+
+        if !res.is_empty() {
+            Ok((true, Some(res[0].clone())))
+        } else {
+            Ok((false, None))
+        }
     }
 
     pub async fn create(
@@ -139,6 +177,7 @@ impl User {
                 creation_stamp: row.get(6),
                 last_login: row.get(7),
                 verified: row.get(8),
+                is_admin: None,
             })
             .collect();
 
@@ -176,7 +215,7 @@ impl User {
         client.query(&stmt, &[&id_user, &id_band]).await?;
         let stmt = client
             .prepare_cached(
-                "SELECT COUNT(id_user) FROM user_band WHERE id_band = $1 AND is_admin = true",
+                "SELECT CAST(COUNT(id_user) as INT) FROM user_band WHERE id_band = $1 AND is_admin = true",
             )
             .await?;
         let rows = client.query(&stmt, &[&id_band]).await?;

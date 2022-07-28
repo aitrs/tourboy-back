@@ -6,7 +6,7 @@ use crate::{
     auth::{create_jwt, with_jwt, Claims},
     config::Config,
     errors::Error,
-    models::{band::Band, user::User},
+    models::{band::Band, user::{User, UserInterface}},
 };
 
 #[derive(Deserialize)]
@@ -150,6 +150,55 @@ async fn user_exit_band(
 }
 
 #[derive(Deserialize)]
+struct KickBandRequest{
+    #[serde(rename = "idUser")]
+    id_user: i32,
+    #[serde(rename = "idBand")]
+    id_band: i32,
+    pwd: String,
+}
+
+#[derive(Serialize)]
+struct KickBandResponse {
+    kicked: bool,
+    reason: Option<String>,
+}
+
+async fn user_kick_band(
+    pool: Pool,
+    claims: Claims,
+    body: KickBandRequest
+) -> Result<impl Reply, Rejection> {
+    let user = User::new(pool.clone());
+    let band = Band::new(pool);
+    if user
+        .authenticate_with_id(claims.id_user, body.pwd)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+    {
+        if band.is_admin(claims.id_user, body.id_band).await.map_err(|e| Error::Database(e.to_string()))? {
+            user.exit_band(body.id_user, body.id_band)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+            Ok(warp::reply::json(&KickBandResponse {
+                kicked: true,
+                reason: None,
+            }))
+        } else {
+            Ok(warp::reply::json(&KickBandResponse {
+                kicked: false,
+                reason: Some("Mauvais mot de passe".to_string()),
+            }))
+        }
+    } else {
+        Ok(warp::reply::json(&KickBandResponse {
+            kicked: false,
+            reason: Some("Droits insuffisants".to_string()),
+        }))
+    }
+}
+
+#[derive(Deserialize)]
 struct AuthenticateRequest {
     email: String,
     pwd: String,
@@ -177,10 +226,7 @@ async fn user_authenticate(pool: Pool, body: AuthenticateRequest) -> Result<impl
         let bands = user
             .get_bands(id)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?
-            .iter()
-            .map(|b| b.id)
-            .collect::<Vec<i32>>();
+            .map_err(|e| Error::Database(e.to_string()))?;
         Ok(warp::reply::json(&AuthenticateResponse {
             status: true,
             jwt: Some(create_jwt(id, bands).map_err(|_| Error::Internal)?),
@@ -202,6 +248,21 @@ async fn user_get_bands(pool: Pool, claims: Claims) -> Result<impl Reply, Reject
             .await
             .map_err(|e| Error::Database(e.to_string()))?,
     ))
+}
+
+#[derive(Serialize)]
+struct UserExistsResponse {
+    exists: bool,
+    user: Option<UserInterface>,
+}
+
+async fn user_exists(email: String, pool: Pool, _claims: Claims) -> Result<impl Reply, Rejection> {
+    let user = User::new(pool);
+    let (e, u) = user.exists(email).await.map_err(|e| Error::Database(e.to_string()))?;
+    Ok(warp::reply::json(&UserExistsResponse {
+        exists: e,
+        user: u,
+    }))
 }
 
 pub fn user_routes(
@@ -254,6 +315,18 @@ pub fn user_routes(
         .and(with_jwt())
         .and_then(user_get_bands);
 
+    let exists = warp::path!("exists" / String)
+        .and(config.with_pool())
+        .and(with_jwt())
+        .and_then(user_exists);
+
+    let kick = warp::path!("kick")
+        .and(warp::patch())
+        .and(config.with_pool())
+        .and(with_jwt())
+        .and(warp::body::json())
+        .and_then(user_kick_band);
+
     register
         .or(verify)
         .or(update)
@@ -262,4 +335,6 @@ pub fn user_routes(
         .or(exit_band)
         .or(auth)
         .or(bands)
+        .or(exists)
+        .or(kick)
 }

@@ -251,6 +251,7 @@ impl Org {
                 creation_stamp: row.get(5),
                 last_login: row.get(7),
                 verified: row.get(8),
+                is_admin: None,
             })
             .collect::<Vec<UserInterface>>())
     }

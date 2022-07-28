@@ -6,7 +6,7 @@ use crate::{
     auth::{with_jwt, Claims},
     config::Config,
     errors::Error,
-    models::band::Band,
+    models::{band::Band, user::UserInterface},
 };
 
 #[derive(Deserialize)]
@@ -46,6 +46,19 @@ async fn band_remove(id_band: i32, pool: Pool, claims: Claims) -> Result<impl Re
     }
 }
 
+#[derive(Serialize)]
+struct BandIsAdminResponse {
+    #[serde(rename = "isAdmin")]
+    is_admin: bool,
+}
+
+async fn band_is_admin(id_band: i32, pool: Pool, claims: Claims) -> Result<impl Reply, Rejection> {
+    let band = Band::new(pool);
+    Ok(warp::reply::json(&BandIsAdminResponse {
+        is_admin: band.is_admin(claims.id_user, id_band).await.map_err(|e| Error::Database(e.to_string()))?,
+    }))
+}
+
 async fn band_edit(
     id_band: i32,
     pool: Pool,
@@ -82,6 +95,21 @@ async fn band_admin_count(id_band: i32, pool: Pool) -> Result<impl Reply, Reject
     }))
 }
 
+#[derive(Serialize)]
+struct BandMembersResponse {
+    members: Vec<UserInterface>,
+}
+
+async fn band_members(id_band: i32, pool: Pool, _claims: Claims) -> Result<impl Reply, Rejection> {
+    let band = Band::new(pool);
+
+    Ok(warp::reply::json(&BandMembersResponse {
+        members: band.get_band_members(id_band)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?,
+    }))
+}
+
 pub fn band_routes(
     config: Config,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = Rejection> + Clone {
@@ -109,8 +137,20 @@ pub fn band_routes(
         .and(config.with_pool())
         .and_then(band_admin_count);
 
+    let members_route = warp::path!("members" / i32)
+        .and(config.with_pool())
+        .and(with_jwt())
+        .and_then(band_members);
+    
+    let is_admin_route = warp::path!("isadmin" / i32)
+        .and(config.with_pool())
+        .and(with_jwt())
+        .and_then(band_is_admin);
+
     create_route
         .or(remove_route)
         .or(update_route)
         .or(ba_count_route)
+        .or(members_route)
+        .or(is_admin_route)
 }

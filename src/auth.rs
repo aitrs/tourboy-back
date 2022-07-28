@@ -9,19 +9,19 @@ use warp::{
     Filter, Rejection,
 };
 
-use crate::errors::Error;
+use crate::{errors::Error, models::band::BandInterface};
 const BEARER: &str = "Bearer ";
 const JWT_SECRET: &[u8] = b"kahloriz";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,
-    pub bands: Vec<i32>,
+    pub bands: Vec<BandInterface>,
     pub id_user: i32,
     pub exp: i64,
 }
 
-pub fn create_jwt(id_user: i32, bands: Vec<i32>) -> Result<String> {
+pub fn create_jwt(id_user: i32, bands: Vec<BandInterface>) -> Result<String> {
     let exp = match Utc::now().checked_add_signed(Duration::hours(2)) {
         Some(t) => t.timestamp(),
         None => return Err(anyhow!("Invalid timestamp")),
