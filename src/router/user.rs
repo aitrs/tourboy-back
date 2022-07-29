@@ -6,7 +6,10 @@ use crate::{
     auth::{create_jwt, with_jwt, Claims},
     config::Config,
     errors::Error,
-    models::{band::Band, user::{User, UserInterface}},
+    models::{
+        band::Band,
+        user::{User, UserInterface},
+    },
 };
 
 #[derive(Deserialize)]
@@ -150,7 +153,7 @@ async fn user_exit_band(
 }
 
 #[derive(Deserialize)]
-struct KickBandRequest{
+struct KickBandRequest {
     #[serde(rename = "idUser")]
     id_user: i32,
     #[serde(rename = "idBand")]
@@ -167,7 +170,7 @@ struct KickBandResponse {
 async fn user_kick_band(
     pool: Pool,
     claims: Claims,
-    body: KickBandRequest
+    body: KickBandRequest,
 ) -> Result<impl Reply, Rejection> {
     let user = User::new(pool.clone());
     let band = Band::new(pool);
@@ -176,7 +179,11 @@ async fn user_kick_band(
         .await
         .map_err(|e| Error::Database(e.to_string()))?
     {
-        if band.is_admin(claims.id_user, body.id_band).await.map_err(|e| Error::Database(e.to_string()))? {
+        if band
+            .is_admin(claims.id_user, body.id_band)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?
+        {
             user.exit_band(body.id_user, body.id_band)
                 .await
                 .map_err(|e| Error::Database(e.to_string()))?;
@@ -258,7 +265,10 @@ struct UserExistsResponse {
 
 async fn user_exists(email: String, pool: Pool, _claims: Claims) -> Result<impl Reply, Rejection> {
     let user = User::new(pool);
-    let (e, u) = user.exists(email).await.map_err(|e| Error::Database(e.to_string()))?;
+    let (e, u) = user
+        .exists(email)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
     Ok(warp::reply::json(&UserExistsResponse {
         exists: e,
         user: u,

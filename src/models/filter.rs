@@ -2,12 +2,9 @@ use std::fmt::Display;
 
 use serde::Deserialize;
 
-#[derive(Debug, Copy, Clone, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Copy, Clone)]
 pub enum FilterType {
-    #[serde(rename = "numeric")]
     Numeric,
-    #[serde(rename = "string")]
     String,
 }
 
@@ -34,12 +31,9 @@ impl Display for FilterType {
     }
 }
 
-#[derive(Debug, Copy, Clone, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Copy, Clone)]
 pub enum FilterOp {
-    #[serde(rename = "like")]
     Like,
-    #[serde(rename = "exact")]
     Exact,
 }
 
@@ -60,6 +54,7 @@ impl FilterOp {
         alias: Option<String>,
         value: T,
         t: FilterType,
+        like_start: bool,
     ) -> String {
         let enclose = match t {
             FilterType::Numeric => "",
@@ -71,22 +66,52 @@ impl FilterOp {
         } else {
             key
         };
+        let prefix = if !like_start {
+            "%".to_string()
+        } else {
+            "".to_string()
+        };
 
         match self {
             FilterOp::Exact => format!("{} = {}{}{}", field, enclose, value, enclose),
-            FilterOp::Like => format!("{} LIKE '%{}%'", field, value),
+            FilterOp::Like => format!("{} LIKE '{}{}%'", field, prefix, value),
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct FilterIntermediate {
+    key: String,
+    alias: Option<String>,
+    op: String,
+    #[serde(rename = "filterType")]
+    filter_type: String,
+    value: String,
+    #[serde(rename = "likeStart")]
+    like_start: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct Filter {
     key: String,
     alias: Option<String>,
     op: FilterOp,
-    #[serde(rename = "filterType")]
     filter_type: FilterType,
     value: String,
+    like_start: bool,
+}
+
+impl From<FilterIntermediate> for Filter {
+    fn from(inter: FilterIntermediate) -> Self {
+        Filter {
+            key: inter.key,
+            alias: inter.alias,
+            op: FilterOp::from(inter.op),
+            filter_type: FilterType::from(inter.filter_type),
+            value: inter.value,
+            like_start: inter.like_start,
+        }
+    }
 }
 
 impl Filter {
@@ -96,6 +121,7 @@ impl Filter {
             self.alias.clone(),
             self.value.clone(),
             self.filter_type,
+            self.like_start,
         )
     }
 }

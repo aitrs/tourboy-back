@@ -63,6 +63,9 @@ pub struct OrgInterface {
     pub description1: Option<String>,
     pub description2: Option<String>,
     pub category: Option<String>,
+    pub city: Option<String>,
+    #[serde(rename = "zipCode")]
+    pub zip_code: Option<String>,
     pub status: Option<Status>,
     #[serde(rename = "creationStamp")]
     pub creation_stamp: NaiveDateTime,
@@ -90,6 +93,88 @@ impl Org {
         Org(pool)
     }
 
+    pub async fn all_orgs(
+        &self,
+        filters: Vec<Filter>,
+        paginator: Option<Paginator>,
+    ) -> Result<(Vec<OrgInterface>, Paginator)> {
+        let client = self.0.get().await?;
+        let req_end = if !filters.is_empty() { " WHERE " } else { "" };
+        let req_filter = gen_request_search(filters);
+        let pag = if let Some(p) = paginator {
+            p
+        } else {
+            Paginator::default()
+        };
+        let streq = format!(
+            "
+            SELECT
+                a.id,
+                o.name,
+                o.description,
+                a.description,
+                a.city,
+                a.postal_code,
+                a.category,
+                CAST(oa.status AS VARCHAR(16)),
+                o.creation_stamp
+            FROM org o
+            JOIN activity a ON a.id_org = o.id
+            LEFT JOIN org_assign oa ON oa.id_org = o.id
+            {}{}{}
+            ",
+            req_end, req_filter, pag,
+        );
+        let stmt = client.prepare_cached(&streq).await?;
+        let rows = client
+            .query(&stmt, &[])
+            .await?
+            .iter()
+            .map(|row| {
+                let statst: Option<String> = row.get(7);
+                let stat = statst.map(Status::from);
+
+                OrgInterface {
+                    id: row.get(0),
+                    name: row.get(1),
+                    description1: row.get(2),
+                    description2: row.get(3),
+                    city: row.get(4),
+                    zip_code: row.get(5),
+                    category: row.get(6),
+                    status: stat,
+                    creation_stamp: row.get(8),
+                }
+            })
+            .collect();
+        let stmt = client
+            .prepare_cached(
+                format!(
+                    "
+                SELECT CAST(COUNT(o.id) AS INT)
+                FROM org o
+                JOIN activity a ON a.id_org = o.id
+                LEFT JOIN org_assign oa ON oa.id_org = o.id
+                {}{}
+            ",
+                    req_end, req_filter
+                )
+                .as_str(),
+            )
+            .await?;
+        let result = client.query(&stmt, &[]).await?;
+        let count: i32 = result[0].get(0);
+        Ok((
+            rows,
+            Paginator {
+                page: pag.page,
+                size: pag.size,
+                page_count: Some(count / pag.size),
+                item_count: Some(count),
+            },
+        ))
+    }
+
     pub async fn band_related_orgs_and_statuses(
         &self,
         id_user: i32,
@@ -115,6 +200,8 @@ impl Org {
                         o.name,
                         o.description,
                         a.description,
+                        a.city,
+                        a.postal_code,
                         a.category,
                         oa.status,
                         o.creation_stamp
@@ -133,7 +220,7 @@ impl Org {
             .await?
             .iter()
             .map(|row| {
-                let statst: Option<String> = row.get(5);
+                let statst: Option<String> = row.get(7);
                 let stat = statst.map(Status::from);
 
                 OrgInterface {
@@ -141,16 +228,18 @@ impl Org {
                     name: row.get(1),
                     description1: row.get(2),
                     description2: row.get(3),
-                    category: row.get(4),
+                    city: row.get(4),
+                    zip_code: row.get(5),
+                    category: row.get(6),
                     status: stat,
-                    creation_stamp: row.get(6),
+                    creation_stamp: row.get(8),
                 }
             })
             .collect();
         let stmt = client
             .prepare_cached(
                 "
-                SELECT COUNT(o.id)
+                SELECT CAST(COUNT(o.id) AS INT)
                 FROM org o
                 JOIN activity a ON a.id_org = o.id
                 LEFT JOIN org_assign oa ON oa.id_org = o.id

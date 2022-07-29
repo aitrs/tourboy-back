@@ -26,7 +26,9 @@ impl Band {
         let rows = client.query(&stmt, &[&name, &id_user]).await?;
         let id: i32 = rows[0].get(0);
         let stmt = client
-            .prepare_cached("INSERT INTO user_band(id_user, id_band, is_admin) VALUES ($1, $2, true)")
+            .prepare_cached(
+                "INSERT INTO user_band(id_user, id_band, is_admin) VALUES ($1, $2, true)",
+            )
             .await?;
         client.query(&stmt, &[&id_user, &id]).await?;
         Ok(id)
@@ -73,7 +75,8 @@ impl Band {
     pub async fn get_band_members(&self, id_band: i32) -> Result<Vec<UserInterface>> {
         let client = self.0.get().await?;
         let stmt = client
-            .prepare_cached("
+            .prepare_cached(
+                "
                 SELECT
                     cu.id,
                     cu.pseudo,
@@ -88,18 +91,25 @@ impl Band {
                 JOIN user_band ub 
                 ON ub.id_user = cu.id
                 WHERE ub.id_band = $1
-            ").await?;
-        let rows = client.query(&stmt, &[&id_band]).await?.iter().map(|row| UserInterface {
-            id: row.get(0),
-            pseudo: row.get(1),
-            name: row.get(2),
-            firstname: row.get(3),
-            email: row.get(4),
-            creation_stamp: row.get(5),
-            last_login: row.get(6),
-            verified: row.get(7),
-            is_admin: Some(row.get(8)),
-        }).collect();
+            ",
+            )
+            .await?;
+        let rows = client
+            .query(&stmt, &[&id_band])
+            .await?
+            .iter()
+            .map(|row| UserInterface {
+                id: row.get(0),
+                pseudo: row.get(1),
+                name: row.get(2),
+                firstname: row.get(3),
+                email: row.get(4),
+                creation_stamp: row.get(5),
+                last_login: row.get(6),
+                verified: row.get(7),
+                is_admin: Some(row.get(8)),
+            })
+            .collect();
 
         Ok(rows)
     }

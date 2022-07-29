@@ -55,7 +55,10 @@ struct BandIsAdminResponse {
 async fn band_is_admin(id_band: i32, pool: Pool, claims: Claims) -> Result<impl Reply, Rejection> {
     let band = Band::new(pool);
     Ok(warp::reply::json(&BandIsAdminResponse {
-        is_admin: band.is_admin(claims.id_user, id_band).await.map_err(|e| Error::Database(e.to_string()))?,
+        is_admin: band
+            .is_admin(claims.id_user, id_band)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?,
     }))
 }
 
@@ -104,7 +107,8 @@ async fn band_members(id_band: i32, pool: Pool, _claims: Claims) -> Result<impl 
     let band = Band::new(pool);
 
     Ok(warp::reply::json(&BandMembersResponse {
-        members: band.get_band_members(id_band)
+        members: band
+            .get_band_members(id_band)
             .await
             .map_err(|e| Error::Database(e.to_string()))?,
     }))
@@ -141,7 +145,7 @@ pub fn band_routes(
         .and(config.with_pool())
         .and(with_jwt())
         .and_then(band_members);
-    
+
     let is_admin_route = warp::path!("isadmin" / i32)
         .and(config.with_pool())
         .and(with_jwt())

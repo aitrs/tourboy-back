@@ -33,6 +33,37 @@ pub async fn is_user_in_band(pool: Pool, claims: Claims, id_band: i32) -> Result
     }
 }
 
+async fn org_all_list(
+    page: i32,
+    size: i32,
+    pool: Pool,
+    _claims: Claims,
+    filters_str: String,
+) -> Result<impl Reply, Rejection> {
+    let org = Org::new(pool);
+    let filters: Vec<filter::FilterIntermediate> =
+        serde_json::from_str(&filters_str).map_err(|_| Error::Internal)?;
+    let (res, pag) = org
+        .all_orgs(
+            filters
+                .iter()
+                .map(|f| filter::Filter::from(f.clone()))
+                .collect(),
+            Some(Paginator {
+                page,
+                size,
+                page_count: None,
+                item_count: None,
+            }),
+        )
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+    Ok(warp::reply::json(&ListResponse {
+        orgs: res,
+        pagination: pag,
+    }))
+}
+
 async fn org_list(
     id_band: i32,
     page: i32,
@@ -42,13 +73,16 @@ async fn org_list(
     filters_str: String,
 ) -> Result<impl Reply, Rejection> {
     let org = Org::new(pool);
-    let filters: Vec<filter::Filter> =
+    let filters: Vec<filter::FilterIntermediate> =
         serde_json::from_str(&filters_str).map_err(|_| Error::Internal)?;
     let (res, pag) = org
         .band_related_orgs_and_statuses(
             claims.id_user,
             id_band,
-            filters,
+            filters
+                .iter()
+                .map(|f| filter::Filter::from(f.clone()))
+                .collect(),
             Some(Paginator {
                 page,
                 size,
@@ -210,6 +244,12 @@ pub fn org_routes(
         .and(warp::header("filters"))
         .and_then(org_list);
 
+    let all_route = warp::path!("all" / i32 / i32)
+        .and(config.with_pool())
+        .and(with_jwt())
+        .and(warp::header("filters"))
+        .and_then(org_all_list);
+
     let tag_route = warp::path!("tag" / i32 / i32)
         .and(warp::patch())
         .and(config.with_pool())
@@ -253,6 +293,7 @@ pub fn org_routes(
         .and_then(org_delete_contact);
 
     list_route
+        .or(all_route)
         .or(tag_route)
         .or(cat_route)
         .or(assigned_route)

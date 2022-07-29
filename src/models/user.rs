@@ -31,7 +31,9 @@ impl User {
 
     pub async fn exists(&self, email: String) -> Result<(bool, Option<UserInterface>)> {
         let client = self.0.get().await?;
-        let stmt = client.prepare_cached("
+        let stmt = client
+            .prepare_cached(
+                "
             SELECT
                 cu.id,
                 cu.pseudo,
@@ -43,18 +45,25 @@ impl User {
                 cu.verified
             FROM cnm_user cu
             WHERE cu.email = $1 AND cu.verified IS TRUE;
-        ").await?;
-        let res = client.query(&stmt, &[&email]).await?.iter().map(|r| UserInterface {
-            id: r.get(0),
-            pseudo: r.get(1),
-            name: r.get(2),
-            firstname: r.get(3),
-            email: r.get(4),
-            creation_stamp: r.get(5),
-            last_login: r.get(6),
-            verified: r.get(7),
-            is_admin: None,
-        }).collect::<Vec<UserInterface>>();
+        ",
+            )
+            .await?;
+        let res = client
+            .query(&stmt, &[&email])
+            .await?
+            .iter()
+            .map(|r| UserInterface {
+                id: r.get(0),
+                pseudo: r.get(1),
+                name: r.get(2),
+                firstname: r.get(3),
+                email: r.get(4),
+                creation_stamp: r.get(5),
+                last_login: r.get(6),
+                verified: r.get(7),
+                is_admin: None,
+            })
+            .collect::<Vec<UserInterface>>();
 
         if !res.is_empty() {
             Ok((true, Some(res[0].clone())))
