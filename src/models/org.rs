@@ -67,6 +67,10 @@ pub struct OrgInterface {
     #[serde(rename = "zipCode")]
     pub zip_code: Option<String>,
     pub status: Option<Status>,
+    #[serde(rename = "userId")]
+    pub user_id: Option<i32>,
+    #[serde(rename = "userPseudo")]
+    pub user_pseudo: Option<String>,
     #[serde(rename = "creationStamp")]
     pub creation_stamp: NaiveDateTime,
 }
@@ -95,11 +99,12 @@ impl Org {
 
     pub async fn all_orgs(
         &self,
+        id_band: i32,
         filters: Vec<Filter>,
         paginator: Option<Paginator>,
     ) -> Result<(Vec<OrgInterface>, Paginator)> {
         let client = self.0.get().await?;
-        let req_end = if !filters.is_empty() { " WHERE " } else { "" };
+        let req_end = if !filters.is_empty() { " AND " } else { "" };
         let req_filter = gen_request_search(filters);
         let pag = if let Some(p) = paginator {
             p
@@ -117,17 +122,21 @@ impl Org {
                 a.postal_code,
                 a.category,
                 CAST(oa.status AS VARCHAR(16)),
+                cu.id,
+                cu.pseudo,
                 o.creation_stamp
             FROM org o
             JOIN activity a ON a.id_org = o.id
             LEFT JOIN org_assign oa ON oa.id_org = o.id
+            LEFT JOIN cnm_user cu ON cu.id = oa.id_user
+            WHERE (oa.id_band IS NULL OR oa.id_band = $1)
             {}{}{}
             ",
             req_end, req_filter, pag,
         );
         let stmt = client.prepare_cached(&streq).await?;
         let rows = client
-            .query(&stmt, &[])
+            .query(&stmt, &[&id_band])
             .await?
             .iter()
             .map(|row| {
@@ -143,7 +152,9 @@ impl Org {
                     zip_code: row.get(5),
                     category: row.get(6),
                     status: stat,
-                    creation_stamp: row.get(8),
+                    user_id: row.get(8),
+                    user_pseudo: row.get(9),
+                    creation_stamp: row.get(10),
                 }
             })
             .collect();
@@ -155,6 +166,8 @@ impl Org {
                 FROM org o
                 JOIN activity a ON a.id_org = o.id
                 LEFT JOIN org_assign oa ON oa.id_org = o.id
+                LEFT JOIN cnm_user cu ON cu.id = oa.id_user
+                WHERE (oa.id_band IS NULL OR oa.id_band = $1)
                 {}{}
             ",
                     req_end, req_filter
@@ -162,7 +175,7 @@ impl Org {
                 .as_str(),
             )
             .await?;
-        let result = client.query(&stmt, &[]).await?;
+        let result = client.query(&stmt, &[&id_band]).await?;
         let count: i32 = result[0].get(0);
         Ok((
             rows,
@@ -204,10 +217,13 @@ impl Org {
                         a.postal_code,
                         a.category,
                         oa.status,
+                        cu.id,
+                        cu.pseudo,
                         o.creation_stamp
                     FROM org o
                     JOIN activity a ON a.id_org = o.id
-                    LEFT JOIN org_assign oa ON oa.id_org = o.id
+                    JOIN org_assign oa ON oa.id_org = o.id
+                    JOIN cnm_user cu ON cu.id = oa.id_user,
                     WHERE oa.id_user = $1 AND oa.id_band = $2 {}{}{}
                     ",
                     req_end, req_filter, pag,
@@ -232,6 +248,8 @@ impl Org {
                     zip_code: row.get(5),
                     category: row.get(6),
                     status: stat,
+                    user_id: row.get(8),
+                    user_pseudo: row.get(9),
                     creation_stamp: row.get(8),
                 }
             })

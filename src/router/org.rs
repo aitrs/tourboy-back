@@ -34,6 +34,7 @@ pub async fn is_user_in_band(pool: Pool, claims: Claims, id_band: i32) -> Result
 }
 
 async fn org_all_list(
+    id_band: i32,
     page: i32,
     size: i32,
     pool: Pool,
@@ -45,6 +46,7 @@ async fn org_all_list(
         serde_json::from_str(&filters_str).map_err(|_| Error::Internal)?;
     let (res, pag) = org
         .all_orgs(
+            id_band,
             filters
                 .iter()
                 .map(|f| filter::Filter::from(f.clone()))
@@ -244,7 +246,7 @@ pub fn org_routes(
         .and(warp::header("filters"))
         .and_then(org_list);
 
-    let all_route = warp::path!("all" / i32 / i32)
+    let all_route = warp::path!("all" / i32 / i32 / i32)
         .and(config.with_pool())
         .and(with_jwt())
         .and(warp::header("filters"))
