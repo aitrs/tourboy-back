@@ -8,7 +8,7 @@ use warp::{Filter, Rejection};
 
 use crate::errors::Error;
 
-const DEFAULT_CONF_FILE: &str = "/ect/cnm/cnm.json";
+const DEFAULT_CONF_FILE: &str = "/etc/cnm/cnm.json";
 const ENV_CONF_KEY: &str = "CNM_CONFIG";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
