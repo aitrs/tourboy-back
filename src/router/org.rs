@@ -7,6 +7,7 @@ use crate::{
     config::Config,
     errors::Error,
     models::{
+        band::Band,
         filter,
         org::{ContactInterface, Org, OrgInterface, Status},
         user::User,
@@ -103,20 +104,52 @@ async fn org_list(
 #[derive(Deserialize)]
 struct TagRequest {
     status: Status,
+    orgs: Vec<i32>,
+}
+
+#[derive(Serialize)]
+struct TagResponse {
+    tagged: bool,
+    reason: Option<String>,
 }
 
 async fn org_tag(
     id_band: i32,
-    id_org: i32,
+    id_user: i32,
     pool: Pool,
     claims: Claims,
     body: TagRequest,
 ) -> Result<impl Reply, Rejection> {
-    let org = Org::new(pool);
-    org.tag_org(claims.id_user, id_band, id_org, body.status)
+    let org = Org::new(pool.clone());
+    let band = Band::new(pool);
+    let users = band
+        .get_band_members(id_band)
         .await
         .map_err(|e| Error::Database(e.to_string()))?;
-    Ok(warp::reply())
+    let is_admin = band
+        .is_admin(claims.id_user, id_band)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+    if users.iter().any(|u| u.id == id_user) && is_admin {
+        org.tag_orgs(id_user, id_band, body.orgs, body.status)
+            .await
+            .map_err(|e| Error::Database(e.to_string()))?;
+
+        Ok(warp::reply::json(&TagResponse {
+            tagged: true,
+            reason: None,
+        }))
+    } else {
+        Ok(warp::reply::json(&TagResponse {
+            tagged: false,
+            reason: Some(if is_admin {
+                "Cet utilisateur ne fait pas partie du groupe courant".to_string() 
+            } else {
+                "Droits insuffisants".to_string()
+            }),
+        }))
+    }
 }
 
 async fn org_categories(pool: Pool, _: Claims) -> Result<impl Reply, Rejection> {
@@ -146,16 +179,6 @@ async fn org_assigned_users(
     }
 }
 
-#[derive(Deserialize)]
-struct ContactRequest {
-    contact: ContactInterface,
-}
-
-#[derive(Serialize)]
-struct ContactCreationResponse {
-    id: i32,
-}
-
 async fn org_contacts(
     id_org: i32,
     id_band: i32,
@@ -180,16 +203,16 @@ async fn org_create_contact(
     id_band: i32,
     pool: Pool,
     claims: Claims,
-    body: ContactRequest,
+    body: ContactInterface,
 ) -> Result<impl Reply, Rejection> {
     let org = Org::new(pool.clone());
 
     if is_user_in_band(pool, claims, id_band).await? {
         let res = org
-            .add_contact(id_org, id_band, body.contact)
+            .add_contact(id_org, id_band, body)
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
-        Ok(warp::reply::json(&ContactCreationResponse { id: res }))
+        Ok(warp::reply::json(&res))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
     }
@@ -198,16 +221,16 @@ async fn org_create_contact(
 async fn org_update_contact(
     pool: Pool,
     claims: Claims,
-    body: ContactRequest,
+    body: ContactInterface,
 ) -> Result<impl Reply, Rejection> {
     let org = Org::new(pool.clone());
     let id_band = org
-        .get_contact_band_id(body.contact.id)
+        .get_contact_band_id(body.id)
         .await
         .map_err(|e| Error::Database(e.to_string()))?;
 
     if is_user_in_band(pool, claims, id_band).await? {
-        org.update_contact(body.contact)
+        org.update_contact(body)
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
         Ok(warp::reply())
@@ -269,26 +292,26 @@ pub fn org_routes(
         .and(with_jwt())
         .and_then(org_assigned_users);
 
-    let get_contacts_route = warp::path!("contacts" / i32 / i32)
+    let get_contacts_route = warp::path!("contact" / i32 / i32)
         .and(config.with_pool())
         .and(with_jwt())
         .and_then(org_contacts);
 
-    let create_contact_route = warp::path!("contacts" / i32 / i32)
+    let create_contact_route = warp::path!("contact" / i32 / i32)
         .and(warp::post())
         .and(config.with_pool())
         .and(with_jwt())
         .and(warp::body::json())
         .and_then(org_create_contact);
 
-    let update_contact_route = warp::path!("contacts")
+    let update_contact_route = warp::path!("contact")
         .and(warp::put())
         .and(config.with_pool())
         .and(with_jwt())
         .and(warp::body::json())
         .and_then(org_update_contact);
 
-    let delete_contact_route = warp::path!("contacts" / i32)
+    let delete_contact_route = warp::path!("contact" / i32)
         .and(warp::delete())
         .and(config.with_pool())
         .and(with_jwt())

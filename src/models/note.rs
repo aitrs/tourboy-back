@@ -99,10 +99,10 @@ impl Note {
             .prepare_cached(
                 "
                 SELECT 
-                    n.id, n.note, n.creation_stamp 
+                    n.id, n.note, n.creation_stamp,
                     cu.id, cu.pseudo, cu.name, cu.firstname,
                     cu.email, cu.creation_stamp, cu.last_login,
-                    cu.verified, cu.is_admin
+                    cu.verified
                 FROM note n
                 JOIN cnm_user cu ON cu.id = n.id_user
                 WHERE n.id_activity = $1 AND n.id_band = $2
@@ -126,7 +126,7 @@ impl Note {
                     creation_stamp: r.get(8),
                     last_login: r.get(9),
                     verified: r.get(10),
-                    is_admin: r.get(11),
+                    is_admin: None,
                 }),
             })
             .collect())

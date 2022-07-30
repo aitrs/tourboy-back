@@ -11,7 +11,9 @@ use crate::{
 
 #[derive(Deserialize)]
 struct NoteCreateRequest {
+    #[serde(rename = "idBand")]
     id_band: i32,
+    #[serde(rename = "idActivity")]
     id_activity: i32,
     note: String,
 }
@@ -75,18 +77,21 @@ pub fn note_routes(
     config: Config,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = Rejection> + Clone {
     let create = warp::path!("create")
+        .and(warp::post())
         .and(config.with_pool())
         .and(with_jwt())
         .and(warp::body::json())
         .and_then(note_create);
 
     let edit = warp::path("edit")
+        .and(warp::put())
         .and(config.with_pool())
         .and(with_jwt())
         .and(warp::body::json())
         .and_then(note_edit);
 
     let delete = warp::path!("delete" / i32)
+        .and(warp::delete())
         .and(config.with_pool())
         .and(with_jwt())
         .and_then(note_delete);

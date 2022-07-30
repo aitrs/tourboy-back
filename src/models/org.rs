@@ -58,7 +58,10 @@ impl Display for Status {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrgInterface {
-    pub id: i32,
+    #[serde(rename = "idActivity")]
+    pub id_activity: i32,
+    #[serde(rename = "idOrg")]
+    pub id_org: i32,
     pub name: String,
     pub description1: Option<String>,
     pub description2: Option<String>,
@@ -124,7 +127,8 @@ impl Org {
                 CAST(oa.status AS VARCHAR(16)),
                 cu.id,
                 cu.pseudo,
-                o.creation_stamp
+                o.creation_stamp,
+                o.id
             FROM org o
             JOIN activity a ON a.id_org = o.id
             LEFT JOIN org_assign oa ON oa.id_org = o.id
@@ -144,7 +148,7 @@ impl Org {
                 let stat = statst.map(Status::from);
 
                 OrgInterface {
-                    id: row.get(0),
+                    id_activity: row.get(0),
                     name: row.get(1),
                     description1: row.get(2),
                     description2: row.get(3),
@@ -155,6 +159,7 @@ impl Org {
                     user_id: row.get(8),
                     user_pseudo: row.get(9),
                     creation_stamp: row.get(10),
+                    id_org: row.get(11),
                 }
             })
             .collect();
@@ -219,7 +224,8 @@ impl Org {
                         oa.status,
                         cu.id,
                         cu.pseudo,
-                        o.creation_stamp
+                        o.creation_stamp,
+                        o.id
                     FROM org o
                     JOIN activity a ON a.id_org = o.id
                     JOIN org_assign oa ON oa.id_org = o.id
@@ -240,7 +246,7 @@ impl Org {
                 let stat = statst.map(Status::from);
 
                 OrgInterface {
-                    id: row.get(0),
+                    id_activity: row.get(0),
                     name: row.get(1),
                     description1: row.get(2),
                     description2: row.get(3),
@@ -250,7 +256,8 @@ impl Org {
                     status: stat,
                     user_id: row.get(8),
                     user_pseudo: row.get(9),
-                    creation_stamp: row.get(8),
+                    creation_stamp: row.get(10),
+                    id_org: row.get(11),
                 }
             })
             .collect();
@@ -278,42 +285,33 @@ impl Org {
         ))
     }
 
-    pub async fn tag_org(
+    pub async fn tag_orgs(
         &self,
         id_user: i32,
         id_band: i32,
-        id_org: i32,
+        orgs: Vec<i32>,
         status: Status,
     ) -> Result<()> {
         let client = self.0.get().await?;
-        let stmt = client
-            .prepare_cached(
-                "SELECT id FROM org_assign WHERE id_user = $1 AND id_band = $2 AND id_org = $3",
-            )
+        let stmt1 = client
+            .prepare_cached("
+                DELETE FROM org_assign WHERE id_org = $1 AND id_user = $2 AND id_band = $3
+            ")
             .await?;
-        let rows = client.query(&stmt, &[&id_user, &id_band, &id_org]).await?;
-
-        let stmt = if rows.is_empty() {
-            client
-                .prepare_cached(
-                    "
+        let stmt2 = client
+            .prepare_cached("
                 INSERT INTO org_assign(id_org, id_user, id_band, status) 
-                VALUES ($1, $2, $3, $4)",
-                )
-                .await?
-        } else {
-            client
-                .prepare_cached(
-                    "
-                UPDATE org_assign SET status = $4 
-                WHERE id_org = $1 AND id_user = $2 AND id_band = $3
-            ",
-                )
-                .await?
-        };
-        client
-            .query(&stmt, &[&id_org, &id_user, &id_band, &status.to_string()])
+                VALUES ($1, $2, $3, $4)
+            ")
             .await?;
+        for id_org in orgs {
+            client
+                .query(&stmt1, &[&id_org, &id_user, &id_band])
+                .await?;
+            client
+                .query(&stmt2, &[&id_org, &id_user, &id_band, &status.to_string()])
+                .await?;
+        }
 
         Ok(())
     }
@@ -406,11 +404,11 @@ impl Org {
         id_org: i32,
         id_band: i32,
         contact: ContactInterface,
-    ) -> Result<i32> {
+    ) -> Result<ContactInterface> {
         let client = self.0.get().await?;
         let stmt = client
-            .prepare_cached(
-                "INSERT INTO contact(
+            .prepare_cached("
+                INSERT INTO contact(
                     id_org,
                     name,
                     firstname,
@@ -420,10 +418,20 @@ impl Org {
                     zip_code,
                     city,
                     id_band
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
-            )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+                RETURNING 
+                    id,
+                    name,
+                    firstname,
+                    email,
+                    phone,
+                    address,
+                    zip_code,
+                    city,
+                    creation_stamp
+            ")
             .await?;
-        let rows = client
+        let rows: Vec<ContactInterface> = client
             .query(
                 &stmt,
                 &[
@@ -438,17 +446,47 @@ impl Org {
                     &id_band,
                 ],
             )
-            .await?;
-        Ok(rows[0].get(0))
+            .await?
+            .iter()
+            .map(|row| ContactInterface {
+                id: row.get(0),
+                name: row.get(1),
+                first_name: row.get(2),
+                email: row.get(3),
+                phone: row.get(4),
+                address: row.get(5),
+                zip_code: row.get(6),
+                city: row.get(7),
+                creation_stamp: row.get(8),
+            })
+            .collect();
+        Ok(rows[0].clone())
     }
 
-    pub async fn update_contact(&self, contact: ContactInterface) -> Result<()> {
+    pub async fn update_contact(&self, contact: ContactInterface) -> Result<ContactInterface> {
         let client = self.0.get().await?;
-        let stmt = client.prepare_cached(
-            "UPDATE contact
-            SET name = $1, firstname = $2, email = $3, phone = $4, address = $5, zip_code = $6, city = $7"
-        ).await?;
-        client
+        let stmt = client.prepare_cached("
+            UPDATE contact
+            SET 
+                name = $1, 
+                firstname = $2, 
+                email = $3, 
+                phone = $4, 
+                address = $5, 
+                zip_code = $6, 
+                city = $7
+            RETURNING 
+                id,
+                name,
+                firstname,
+                email,
+                phone,
+                address,
+                zip_code,
+                city,
+                creation_stamp
+        ").await?;
+        let res: Vec<ContactInterface> = client
             .query(
                 &stmt,
                 &[
@@ -461,17 +499,60 @@ impl Org {
                     &contact.city,
                 ],
             )
-            .await?;
-        Ok(())
+            .await?
+            .iter()
+            .map(|row| ContactInterface {
+                id: row.get(0),
+                name: row.get(1),
+                first_name: row.get(2),
+                email: row.get(3),
+                phone: row.get(4),
+                address: row.get(5),
+                zip_code: row.get(6),
+                city: row.get(7),
+                creation_stamp: row.get(8),
+            })
+            .collect();
+            
+        Ok(res[0].clone())
     }
 
-    pub async fn remove_contact(&self, id_contact: i32) -> Result<()> {
+    pub async fn remove_contact(&self, id_contact: i32) -> Result<ContactInterface> {
         let client = self.0.get().await?;
         let stmt = client
-            .prepare_cached("DELETE FROM contact WHERE id = $1")
+            .prepare_cached("
+                DELETE FROM contact 
+                WHERE id = $1
+                RETURNING 
+                    id,
+                    name,
+                    firstname,
+                    email,
+                    phone,
+                    address,
+                    zip_code,
+                    city,
+                    creation_stamp
+            ")
             .await?;
-        client.query(&stmt, &[&id_contact]).await?;
-        Ok(())
+        let res: Vec<ContactInterface> = client
+            .query(&stmt, &[&id_contact])
+            .await?
+            .iter()
+            .map(|row| ContactInterface {
+                id: row.get(0),
+                name: row.get(1),
+                first_name: row.get(2),
+                email: row.get(3),
+                phone: row.get(4),
+                address: row.get(5),
+                zip_code: row.get(6),
+                city: row.get(7),
+                creation_stamp: row.get(8),
+            })
+            .collect();
+            
+        Ok(res[0].clone())
     }
 
     pub async fn get_contact_band_id(&self, id_contact: i32) -> Result<i32> {
