@@ -223,6 +223,12 @@ impl User {
             .await?;
         client.query(&stmt, &[&id_user, &id_band]).await?;
         let stmt = client
+            .prepare_cached("
+                DELETE FROM org_assign WHERE id_user = $1 AND id_band = $2
+            ")
+            .await?;
+        client.query(&stmt, &[&id_user, &id_band]).await?;
+        let stmt = client
             .prepare_cached(
                 "SELECT CAST(COUNT(id_user) as INT) FROM user_band WHERE id_band = $1 AND is_admin = true",
             )

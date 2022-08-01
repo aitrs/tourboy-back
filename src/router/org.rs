@@ -9,7 +9,7 @@ use crate::{
     models::{
         band::Band,
         filter,
-        org::{ContactInterface, Org, OrgInterface, Status},
+        org::{ContactInterface, Org, Status, OrgRawInterface},
         user::User,
     },
     paginator::Paginator,
@@ -17,7 +17,7 @@ use crate::{
 
 #[derive(Serialize)]
 struct ListResponse {
-    orgs: Vec<OrgInterface>,
+    orgs: Vec<OrgRawInterface>,
     pagination: Paginator,
 }
 
@@ -103,7 +103,7 @@ async fn org_list(
 
 #[derive(Deserialize)]
 struct TagRequest {
-    status: Status,
+    status: String,
     orgs: Vec<i32>,
 }
 
@@ -130,9 +130,14 @@ async fn org_tag(
         .is_admin(claims.id_user, id_band)
         .await
         .map_err(|e| Error::Database(e.to_string()))?;
+    let assigned = org
+        .get_affected_users(id_band, body.orgs.clone())
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+    let is_assigned = assigned.iter().any(|u| u.id == id_user);
 
-    if users.iter().any(|u| u.id == id_user) && is_admin {
-        org.tag_orgs(id_user, id_band, body.orgs, body.status)
+    if users.iter().any(|u| u.id == id_user) && (is_admin || is_assigned) {
+        org.tag_orgs(id_user, id_band, body.orgs, Status::from(body.status))
             .await
             .map_err(|e| Error::Database(e.to_string()))?;
 
