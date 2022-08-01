@@ -41,10 +41,38 @@ impl Note {
         let res = client
             .query(&stmt, &[&id_user, &id_band, &id_activity, &note])
             .await?;
+        let stmt2 = client
+            .prepare_cached(
+                "
+                SELECT 
+                    id, pseudo, name, firstname,
+                    email, creation_stamp, last_login,
+                    verified
+                FROM cnm_user
+                WHERE id = $1
+            ",
+            )
+            .await?;
+        let res2 = client
+            .query(&stmt2, &[&id_user])
+            .await?
+            .iter()
+            .map(|row| UserInterface {
+                id: row.get(0),
+                pseudo: row.get(1),
+                name: row.get(2),
+                firstname: row.get(3),
+                email: row.get(4),
+                creation_stamp: row.get(5),
+                last_login: row.get(6),
+                verified: row.get(7),
+                is_admin: None,
+            })
+            .collect::<Vec<UserInterface>>();
         Ok(NoteInterface {
             id: res[0].get(0),
             note: res[0].get(1),
-            user: None,
+            user: Some(res2[0].clone()),
             creation_stamp: res[0].get(2),
         })
     }
@@ -69,17 +97,17 @@ impl Note {
         })
     }
 
-    pub async fn delete(&self, id: i32, id_user: i32) -> Result<Option<NoteInterface>> {
+    pub async fn delete(&self, id: i32) -> Result<Option<NoteInterface>> {
         let client = self.0.get().await?;
         let stmt = client
             .prepare_cached(
                 "
-                DELETE FROM note WHERE id = $1 AND id_user = $2
+                DELETE FROM note WHERE id = $1
                 RETURNING id, note, creation_stamp
             ",
             )
             .await?;
-        let res = client.query(&stmt, &[&id, &id_user]).await?;
+        let res = client.query(&stmt, &[&id]).await?;
 
         if res.is_empty() {
             Ok(None)
@@ -106,6 +134,7 @@ impl Note {
                 FROM note n
                 JOIN cnm_user cu ON cu.id = n.id_user
                 WHERE n.id_activity = $1 AND n.id_band = $2
+                ORDER BY n.creation_stamp DESC
             ",
             )
             .await?;

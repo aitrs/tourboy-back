@@ -294,20 +294,22 @@ impl Org {
     ) -> Result<()> {
         let client = self.0.get().await?;
         let stmt1 = client
-            .prepare_cached("
+            .prepare_cached(
+                "
                 DELETE FROM org_assign WHERE id_org = $1 AND id_user = $2 AND id_band = $3
-            ")
+            ",
+            )
             .await?;
         let stmt2 = client
-            .prepare_cached("
+            .prepare_cached(
+                "
                 INSERT INTO org_assign(id_org, id_user, id_band, status) 
                 VALUES ($1, $2, $3, $4)
-            ")
+            ",
+            )
             .await?;
         for id_org in orgs {
-            client
-                .query(&stmt1, &[&id_org, &id_user, &id_band])
-                .await?;
+            client.query(&stmt1, &[&id_org, &id_user, &id_band]).await?;
             client
                 .query(&stmt2, &[&id_org, &id_user, &id_band, &status.to_string()])
                 .await?;
@@ -407,7 +409,8 @@ impl Org {
     ) -> Result<ContactInterface> {
         let client = self.0.get().await?;
         let stmt = client
-            .prepare_cached("
+            .prepare_cached(
+                "
                 INSERT INTO contact(
                     id_org,
                     name,
@@ -429,7 +432,8 @@ impl Org {
                     zip_code,
                     city,
                     creation_stamp
-            ")
+            ",
+            )
             .await?;
         let rows: Vec<ContactInterface> = client
             .query(
@@ -465,7 +469,9 @@ impl Org {
 
     pub async fn update_contact(&self, contact: ContactInterface) -> Result<ContactInterface> {
         let client = self.0.get().await?;
-        let stmt = client.prepare_cached("
+        let stmt = client
+            .prepare_cached(
+                "
             UPDATE contact
             SET 
                 name = $1, 
@@ -485,7 +491,9 @@ impl Org {
                 zip_code,
                 city,
                 creation_stamp
-        ").await?;
+        ",
+            )
+            .await?;
         let res: Vec<ContactInterface> = client
             .query(
                 &stmt,
@@ -513,14 +521,15 @@ impl Org {
                 creation_stamp: row.get(8),
             })
             .collect();
-            
+
         Ok(res[0].clone())
     }
 
     pub async fn remove_contact(&self, id_contact: i32) -> Result<ContactInterface> {
         let client = self.0.get().await?;
         let stmt = client
-            .prepare_cached("
+            .prepare_cached(
+                "
                 DELETE FROM contact 
                 WHERE id = $1
                 RETURNING 
@@ -533,7 +542,8 @@ impl Org {
                     zip_code,
                     city,
                     creation_stamp
-            ")
+            ",
+            )
             .await?;
         let res: Vec<ContactInterface> = client
             .query(&stmt, &[&id_contact])
@@ -551,7 +561,7 @@ impl Org {
                 creation_stamp: row.get(8),
             })
             .collect();
-            
+
         Ok(res[0].clone())
     }
 

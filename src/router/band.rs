@@ -9,6 +9,8 @@ use crate::{
     models::{band::Band, user::UserInterface},
 };
 
+use super::org::is_user_in_band;
+
 #[derive(Deserialize)]
 struct BandCreateRequest {
     pub name: String,
@@ -60,6 +62,31 @@ async fn band_is_admin(id_band: i32, pool: Pool, claims: Claims) -> Result<impl 
             .await
             .map_err(|e| Error::Database(e.to_string()))?,
     }))
+}
+
+async fn get_band_admins(
+    id_band: i32,
+    pool: Pool,
+    claims: Claims,
+) -> Result<impl Reply, Rejection> {
+    let band = Band::new(pool.clone());
+    if is_user_in_band(pool, claims, id_band)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?
+    {
+        Ok(warp::reply::json(
+            &band
+                .get_band_members(id_band)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?
+                .iter()
+                .filter(|user| user.is_admin.unwrap_or(false))
+                .cloned()
+                .collect::<Vec<UserInterface>>(),
+        ))
+    } else {
+        Err(warp::reject::custom(Error::Unauthorized))
+    }
 }
 
 async fn band_edit(
@@ -151,10 +178,16 @@ pub fn band_routes(
         .and(with_jwt())
         .and_then(band_is_admin);
 
+    let admins_route = warp::path!("admins" / i32)
+        .and(config.with_pool())
+        .and(with_jwt())
+        .and_then(get_band_admins);
+
     create_route
         .or(remove_route)
         .or(update_route)
         .or(ba_count_route)
         .or(members_route)
         .or(is_admin_route)
+        .or(admins_route)
 }

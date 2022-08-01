@@ -6,7 +6,7 @@ use crate::{
     auth::{with_jwt, Claims},
     config::Config,
     errors::Error,
-    models::note::Note,
+    models::{note::Note, band::Band},
 };
 
 #[derive(Deserialize)]
@@ -50,13 +50,21 @@ async fn note_edit(
     Ok(warp::reply::json(&res))
 }
 
-async fn note_delete(id: i32, pool: Pool, claims: Claims) -> Result<impl Reply, Rejection> {
+async fn note_delete(id: i32, id_band: i32, pool: Pool, claims: Claims) -> Result<impl Reply, Rejection> {
+    let band = Band::new(pool.clone());
     let note = Note::new(pool);
-    let res = note
-        .delete(id, claims.id_user)
+
+    if band.is_admin(claims.id_user, id_band)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
-    Ok(warp::reply::json(&res))
+        .map_err(|e| Error::Database(e.to_string()))? {
+            let res = note
+                .delete(id)
+                .await
+                .map_err(|e| Error::Database(e.to_string()))?;
+            Ok(warp::reply::json(&res))
+    } else {
+        Err(warp::reject::custom(Error::Unauthorized))
+    }
 }
 
 async fn note_read_all(
@@ -90,7 +98,7 @@ pub fn note_routes(
         .and(warp::body::json())
         .and_then(note_edit);
 
-    let delete = warp::path!("delete" / i32)
+    let delete = warp::path!("delete" / i32 / i32)
         .and(warp::delete())
         .and(config.with_pool())
         .and(with_jwt())

@@ -144,7 +144,7 @@ async fn org_tag(
         Ok(warp::reply::json(&TagResponse {
             tagged: false,
             reason: Some(if is_admin {
-                "Cet utilisateur ne fait pas partie du groupe courant".to_string() 
+                "Cet utilisateur ne fait pas partie du groupe courant".to_string()
             } else {
                 "Droits insuffisants".to_string()
             }),
