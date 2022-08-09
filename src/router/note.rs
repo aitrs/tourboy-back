@@ -6,7 +6,7 @@ use crate::{
     auth::{with_jwt, Claims},
     config::Config,
     errors::Error,
-    models::{note::Note, band::Band},
+    models::{note::Note, band::Band}, db_error_to_warp,
 };
 
 #[derive(Deserialize)]
@@ -27,7 +27,7 @@ async fn note_create(
     let res = note
         .create(claims.id_user, body.id_band, body.id_activity, body.note)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&res))
 }
 
@@ -46,7 +46,7 @@ async fn note_edit(
     let res = note
         .edit(body.id, claims.id_user, body.note)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&res))
 }
 
@@ -56,11 +56,11 @@ async fn note_delete(id: i32, id_band: i32, pool: Pool, claims: Claims) -> Resul
 
     if band.is_admin(claims.id_user, id_band)
         .await
-        .map_err(|e| Error::Database(e.to_string()))? {
+        .map_err(db_error_to_warp)? {
             let res = note
                 .delete(id)
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?;
+                .map_err(db_error_to_warp)?;
             Ok(warp::reply::json(&res))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
@@ -77,7 +77,7 @@ async fn note_read_all(
     let res = note
         .read_all(id_activity, id_band)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&res))
 }
 

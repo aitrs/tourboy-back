@@ -23,8 +23,8 @@ pub struct UserInterface {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct VerifyResponse {
-    id: Option<i32>,
-    verified: bool,
+    pub id: Option<i32>,
+    pub verified: bool,
 }
 
 #[derive(Clone)]
@@ -134,6 +134,34 @@ impl User {
             client.query(&stmt, &[]).await?;
         }
         Ok(matched)
+    }
+
+    pub async fn forgot_password(&self, id: i32, pwd: String, chain: String) -> Result<VerifyResponse> {
+        let client = self.0.get().await?;
+        let stmt = client.prepare("
+                UPDATE cnm_user SET verified = true, pwd = crypt($3, gen_salt('bf'))
+                WHERE id = $1 AND verify_chain = $2
+                RETURNING id, verified
+            ")
+            .await?;
+        let rows = client
+            .query(&stmt, &[&id, &chain, &pwd])
+            .await?
+            .iter()
+            .map(|row| VerifyResponse {
+                id: row.get(0),
+                verified: row.get(1),
+            })
+            .collect::<Vec<VerifyResponse>>();
+
+        if rows.is_empty() {
+            Ok(VerifyResponse {
+                id: None,
+                verified: false,
+            })
+        } else {
+            Ok(rows[0].clone())
+        }
     }
 
     pub async fn update(&self, id: i32, field: String, value: String) -> Result<()> {
@@ -282,13 +310,31 @@ impl User {
         }
     }
 
-    pub async fn deactivate(&self, id_user: i32) -> Result<()> {
+    pub async fn deactivate(&self, id_user: i32) -> Result<VerifyResponse> {
         let client = self.0.get().await?;
         let stmt = client
-            .prepare_cached("UPDATE cnm_user SET verified = false WHERE id = $1")
+            .prepare_cached("
+                UPDATE cnm_user SET verified = false, verify_chain = md5(random()::text) WHERE id = $1
+                RETURNING id, verified
+            ")
             .await?;
-        client.query(&stmt, &[&id_user]).await?;
-        Ok(())
+        let rows = client
+            .query(&stmt, &[&id_user])
+            .await?
+            .iter()
+            .map(|row| VerifyResponse {
+                id: row.get(0),
+                verified: row.get(1),
+            })
+            .collect::<Vec<VerifyResponse>>();
+        if rows.is_empty() {
+            Ok(VerifyResponse {
+                id: None,
+                verified: false,
+            })
+        } else {
+            Ok(rows[0].clone())
+        }
     }
 
     pub async fn get_bands(&self, id_user: i32) -> Result<Vec<BandInterface>> {

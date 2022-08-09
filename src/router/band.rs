@@ -6,7 +6,7 @@ use crate::{
     auth::{with_jwt, Claims},
     config::Config,
     errors::Error,
-    models::{band::Band, user::UserInterface},
+    models::{band::Band, user::UserInterface}, db_error_to_warp,
 };
 
 use super::org::is_user_in_band;
@@ -30,7 +30,7 @@ async fn band_create(
     let id = band
         .create(claims.id_user, body.name)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&BandCreateResponse { id }))
 }
 
@@ -39,7 +39,7 @@ async fn band_remove(id_band: i32, pool: Pool, claims: Claims) -> Result<impl Re
     if band
         .is_admin(claims.id_user, id_band)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
+        .map_err(db_error_to_warp)?
     {
         band.remove(id_band).await.map_err(|_| Error::Internal)?;
         Ok(warp::reply())
@@ -60,7 +60,7 @@ async fn band_is_admin(id_band: i32, pool: Pool, claims: Claims) -> Result<impl 
         is_admin: band
             .is_admin(claims.id_user, id_band)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?,
+            .map_err(db_error_to_warp)?,
     }))
 }
 
@@ -78,7 +78,7 @@ async fn get_band_admins(
             &band
                 .get_band_members(id_band)
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?
+                .map_err(db_error_to_warp)?
                 .iter()
                 .filter(|user| user.is_admin.unwrap_or(false))
                 .cloned()
@@ -99,11 +99,11 @@ async fn band_edit(
     if band
         .is_admin(claims.id_user, id_band)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
+        .map_err(db_error_to_warp)?
     {
         band.edit(id_band, body.name)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(db_error_to_warp)?;
         Ok(warp::reply())
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
@@ -121,7 +121,7 @@ async fn band_admin_count(id_band: i32, pool: Pool) -> Result<impl Reply, Reject
         count: band
             .get_admin_count(id_band)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?,
+            .map_err(db_error_to_warp)?,
     }))
 }
 
@@ -137,7 +137,7 @@ async fn band_members(id_band: i32, pool: Pool, _claims: Claims) -> Result<impl 
         members: band
             .get_band_members(id_band)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?,
+            .map_err(db_error_to_warp)?,
     }))
 }
 

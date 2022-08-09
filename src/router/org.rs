@@ -12,7 +12,7 @@ use crate::{
         org::{ContactInterface, Org, Status, OrgRawInterface},
         user::User,
     },
-    paginator::Paginator,
+    paginator::Paginator, db_error_to_warp,
 };
 
 #[derive(Serialize)]
@@ -21,12 +21,12 @@ struct ListResponse {
     pagination: Paginator,
 }
 
-pub async fn is_user_in_band(pool: Pool, claims: Claims, id_band: i32) -> Result<bool, Error> {
+pub async fn is_user_in_band(pool: Pool, claims: Claims, id_band: i32) -> anyhow::Result<bool, Error> {
     let user = User::new(pool);
     let bands = user
         .get_bands(claims.id_user)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     if bands.iter().any(|bi| bi.id == id_band) {
         Ok(true)
     } else {
@@ -60,7 +60,7 @@ async fn org_all_list(
             }),
         )
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&ListResponse {
         orgs: res,
         pagination: pag,
@@ -94,7 +94,7 @@ async fn org_list(
             }),
         )
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&ListResponse {
         orgs: res,
         pagination: pag,
@@ -125,21 +125,21 @@ async fn org_tag(
     let users = band
         .get_band_members(id_band)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     let is_admin = band
         .is_admin(claims.id_user, id_band)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     let assigned = org
         .get_affected_users(id_band, body.orgs.clone())
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     let is_assigned = assigned.iter().any(|u| u.id == id_user);
 
     if users.iter().any(|u| u.id == id_user) && (is_admin || is_assigned) {
         org.tag_orgs(id_user, id_band, body.orgs, Status::from(body.status))
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(db_error_to_warp)?;
 
         Ok(warp::reply::json(&TagResponse {
             tagged: true,
@@ -162,7 +162,7 @@ async fn org_categories(pool: Pool, _: Claims) -> Result<impl Reply, Rejection> 
     Ok(warp::reply::json(
         &org.get_categories()
             .await
-            .map_err(|e| Error::Database(e.to_string()))?,
+            .map_err(db_error_to_warp)?,
     ))
 }
 
@@ -177,7 +177,7 @@ async fn org_assigned_users(
         Ok(warp::reply::json(
             &org.get_assigned_users(id_band)
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?,
+                .map_err(db_error_to_warp)?,
         ))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
@@ -196,7 +196,7 @@ async fn org_contacts(
         Ok(warp::reply::json(
             &org.get_contacts(id_org, id_band)
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?,
+                .map_err(db_error_to_warp)?,
         ))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
@@ -216,7 +216,7 @@ async fn org_create_contact(
         let res = org
             .add_contact(id_org, id_band, body)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(db_error_to_warp)?;
         Ok(warp::reply::json(&res))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
@@ -232,12 +232,12 @@ async fn org_update_contact(
     let id_band = org
         .get_contact_band_id(body.id)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
 
     if is_user_in_band(pool, claims, id_band).await? {
         org.update_contact(body)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(db_error_to_warp)?;
         Ok(warp::reply())
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
@@ -253,12 +253,12 @@ async fn org_delete_contact(
     let id_band = org
         .get_contact_band_id(id_contact)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
 
     if is_user_in_band(pool, claims, id_band).await? {
         org.remove_contact(id_contact)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(db_error_to_warp)?;
         Ok(warp::reply())
     } else {
         Err(warp::reject::custom(Error::Unauthorized))

@@ -8,8 +8,8 @@ use crate::{
     errors::Error,
     models::{
         band::Band,
-        user::{User, UserInterface},
-    }, mailer::Mailer,
+        user::{User, UserInterface, VerifyResponse},
+    }, mailer::Mailer, db_error_to_warp, etointlog,
 };
 
 #[derive(Deserialize)]
@@ -34,7 +34,7 @@ async fn user_create(pool: Pool, body: UserCreationRequest) -> Result<impl Reply
         id: user
             .create(body.pseudo, body.email, body.name, body.firstname, body.pwd)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?,
+            .map_err(db_error_to_warp)?,
     };
     mailer.send_email(resp.id, pool).await.map_err(|e| {
         eprintln!("Email sender problem {}", e);
@@ -48,7 +48,7 @@ async fn user_verify(id: i32, chain: String, pool: Pool) -> Result<impl Reply, R
     let user = User::new(pool);
     let resp = user.verify(id, chain)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&resp))
 }
 
@@ -66,7 +66,7 @@ async fn user_update(
     let user = User::new(pool);
     user.update(claims.id_user, body.field, body.value)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     Ok(warp::reply())
 }
 
@@ -75,11 +75,11 @@ async fn user_read(id: i32, pool: Pool, claims: Claims) -> Result<impl Reply, Re
     let my_bands = user
         .get_bands(claims.id_user)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     let them_bands = user
         .get_bands(id)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
 
     if my_bands
         .iter()
@@ -89,11 +89,49 @@ async fn user_read(id: i32, pool: Pool, claims: Claims) -> Result<impl Reply, Re
             &user
                 .read(id)
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?,
+                .map_err(db_error_to_warp)?,
         ))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
     }
+}
+
+#[derive(Deserialize)]
+struct UserPasswordForgotRequest {
+    email: String,
+}
+
+async fn user_forgot_password_request(pool: Pool, body: UserPasswordForgotRequest) -> Result<impl Reply, Rejection> {
+    let user = User::new(pool.clone());
+    if let Some(uid) = user
+        .get_id_from_email(body.email)
+        .await
+        .map_err(db_error_to_warp)? {
+        let resp = user.deactivate(uid).await.map_err(db_error_to_warp)?;
+        let mailer = Mailer::ForgotPassword;
+
+        mailer.send_email(uid, pool).await.map_err(etointlog)?;
+        Ok(warp::reply::json(&resp))
+    } else {
+        Ok(warp::reply::json(&VerifyResponse{
+            id: None,
+            verified: false,
+        }))
+    }
+}
+
+#[derive(Deserialize)]
+struct ForgotPasswordModRequest {
+    id: i32,
+    pwd: String,
+    chain: String,
+}
+
+async fn user_forgot_password_verify(pool: Pool, body: ForgotPasswordModRequest) -> Result<impl Reply, Rejection> {
+    let user = User::new(pool);
+    let resp = user.forgot_password(body.id, body.pwd, body.chain).await.map_err(db_error_to_warp)?;
+
+    Ok(warp::reply::json(&resp))
 }
 
 #[derive(Deserialize)]
@@ -114,16 +152,16 @@ async fn user_add_band(
     if let Some(uid) = user
         .get_id_from_email(body.email)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
+        .map_err(db_error_to_warp)?
     {
         if band
             .is_admin(claims.id_user, body.id_band)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?
+            .map_err(db_error_to_warp)?
         {
             user.add_band(uid, body.id_band, body.administrator)
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?;
+                .map_err(db_error_to_warp)?;
             Ok(warp::reply())
         } else {
             Err(warp::reject::custom(Error::Unauthorized))
@@ -149,11 +187,11 @@ async fn user_exit_band(
     if user
         .authenticate_with_id(claims.id_user, body.pwd)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
+        .map_err(db_error_to_warp)?
     {
         user.exit_band(claims.id_user, body.id_band)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(db_error_to_warp)?;
         Ok(warp::reply())
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
@@ -185,16 +223,16 @@ async fn user_kick_band(
     if user
         .authenticate_with_id(claims.id_user, body.pwd)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
+        .map_err(db_error_to_warp)?
     {
         if band
             .is_admin(claims.id_user, body.id_band)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?
+            .map_err(db_error_to_warp)?
         {
             user.exit_band(body.id_user, body.id_band)
                 .await
-                .map_err(|e| Error::Database(e.to_string()))?;
+                .map_err(db_error_to_warp)?;
             Ok(warp::reply::json(&KickBandResponse {
                 kicked: true,
                 reason: None,
@@ -231,17 +269,17 @@ async fn user_authenticate(pool: Pool, body: AuthenticateRequest) -> Result<impl
     if user
         .authenticate(body.email.clone(), body.pwd)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?
+        .map_err(db_error_to_warp)?
     {
         let id = user
             .get_id_from_email(body.email)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?
+            .map_err(db_error_to_warp)?
             .unwrap();
         let bands = user
             .get_bands(id)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?;
+            .map_err(db_error_to_warp)?;
         Ok(warp::reply::json(&AuthenticateResponse {
             status: true,
             jwt: Some(create_jwt(id, bands).map_err(|_| Error::Internal)?),
@@ -261,7 +299,7 @@ async fn user_get_bands(pool: Pool, claims: Claims) -> Result<impl Reply, Reject
         &user
             .get_bands(claims.id_user)
             .await
-            .map_err(|e| Error::Database(e.to_string()))?,
+            .map_err(db_error_to_warp)?,
     ))
 }
 
@@ -276,7 +314,7 @@ async fn user_exists(email: String, pool: Pool, _claims: Claims) -> Result<impl 
     let (e, u) = user
         .exists(email)
         .await
-        .map_err(|e| Error::Database(e.to_string()))?;
+        .map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&UserExistsResponse {
         exists: e,
         user: u,
@@ -345,6 +383,18 @@ pub fn user_routes(
         .and(warp::body::json())
         .and_then(user_kick_band);
 
+    let forgot_password_request = warp::path!("forgotrequest")
+        .and(warp::post())
+        .and(config.with_pool())
+        .and(warp::body::json())
+        .and_then(user_forgot_password_request);
+
+    let forgot_password_verify = warp::path!("forgotverify")
+        .and(warp::post())
+        .and(config.with_pool())
+        .and(warp::body::json())
+        .and_then(user_forgot_password_verify);
+
     register
         .or(verify)
         .or(update)
@@ -355,4 +405,6 @@ pub fn user_routes(
         .or(bands)
         .or(exists)
         .or(kick)
+        .or(forgot_password_request)
+        .or(forgot_password_verify)
 }
