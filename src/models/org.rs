@@ -200,6 +200,7 @@ impl Org {
                 }
             })
             .collect();
+        println!("Fetched");
         let stmt = client
             .prepare_cached(
                 format!(
