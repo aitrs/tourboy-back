@@ -21,6 +21,12 @@ pub struct UserInterface {
     pub is_admin: Option<bool>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct VerifyResponse {
+    id: Option<i32>,
+    verified: bool,
+}
+
 #[derive(Clone)]
 pub struct User(Pool);
 
@@ -246,15 +252,34 @@ impl User {
         Ok(())
     }
 
-    pub async fn verify(&self, email: String, chain: String) -> Result<()> {
+
+    pub async fn verify(&self, id: i32, chain: String) -> Result<VerifyResponse> {
         let client = self.0.get().await?;
         let stmt = client
-            .prepare_cached(
-                "UPDATE cnm_user SET verified = true WHERE email = $1 AND verify_chain = $2",
-            )
-            .await?;
-        client.query(&stmt, &[&email, &chain]).await?;
-        Ok(())
+            .prepare_cached("
+                UPDATE cnm_user 
+                SET 
+                    verified = true 
+                WHERE id = $1 AND verify_chain = $2
+                RETURNING id, verified
+            ").await?;
+        let rows = client
+            .query(&stmt, &[&id, &chain])
+            .await?
+            .iter()
+            .map(|row| VerifyResponse {
+                id: Some(row.get(0)),
+                verified: row.get(1),
+            })
+            .collect::<Vec<VerifyResponse>>();
+        if rows.is_empty() {
+            Ok(VerifyResponse {
+                id: None,
+                verified: false,
+            })
+        } else {
+            Ok(rows[0].clone())
+        }
     }
 
     pub async fn deactivate(&self, id_user: i32) -> Result<()> {

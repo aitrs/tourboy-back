@@ -7,7 +7,7 @@ use warp::Filter;
 
 #[tokio::main]
 async fn main() {
-    let config = Config::retrieve().expect("Unable to retrieve configuration file");
+    let config = Config::retrieve(true).expect("Unable to retrieve configuration file");
     let band_routes = warp::path("band").and(band_routes(config.clone()));
     let org_routes = warp::path("org").and(org_routes(config.clone()));
     let user_routes = warp::path("user").and(user_routes(config.clone()));

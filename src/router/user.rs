@@ -9,7 +9,7 @@ use crate::{
     models::{
         band::Band,
         user::{User, UserInterface},
-    },
+    }, mailer::Mailer,
 };
 
 #[derive(Deserialize)]
@@ -27,21 +27,29 @@ struct UserCreationResponse {
 }
 
 async fn user_create(pool: Pool, body: UserCreationRequest) -> Result<impl Reply, Rejection> {
-    let user = User::new(pool);
-    Ok(warp::reply::json(&UserCreationResponse {
+    let user = User::new(pool.clone());
+    let mailer = Mailer::Verify;
+
+    let resp = UserCreationResponse {
         id: user
             .create(body.pseudo, body.email, body.name, body.firstname, body.pwd)
             .await
             .map_err(|e| Error::Database(e.to_string()))?,
-    }))
+    };
+    mailer.send_email(resp.id, pool).await.map_err(|e| {
+        eprintln!("Email sender problem {}", e);
+        Error::Internal
+    })?;
+    Ok(warp::reply::json(&resp))
+
 }
 
-async fn user_verify(email: String, chain: String, pool: Pool) -> Result<impl Reply, Rejection> {
+async fn user_verify(id: i32, chain: String, pool: Pool) -> Result<impl Reply, Rejection> {
     let user = User::new(pool);
-    user.verify(email, chain)
+    let resp = user.verify(id, chain)
         .await
         .map_err(|e| Error::Database(e.to_string()))?;
-    Ok(warp::reply())
+    Ok(warp::reply::json(&resp))
 }
 
 #[derive(Deserialize)]
@@ -284,7 +292,7 @@ pub fn user_routes(
         .and(warp::body::json())
         .and_then(user_create);
 
-    let verify = warp::path!("verify" / String / String)
+    let verify = warp::path!("verify" / i32 / String)
         .and(config.with_pool())
         .and_then(user_verify);
 
