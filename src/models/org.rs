@@ -200,23 +200,24 @@ impl Org {
                 }
             })
             .collect();
-        println!("Fetched");
-        let stmt = client
-            .prepare_cached(
-                format!(
-                    "
+        let rq = format!("
                 SELECT CAST(COUNT(o.id) AS INT)
                 FROM org o
                 JOIN activity a ON a.id_org = o.id
                 LEFT JOIN org_assign oa ON oa.id_org = o.id
                 LEFT JOIN cnm_user cu ON cu.id = oa.id_user
                 WHERE (oa.id_band IS NULL OR oa.id_band = $1)
-                AND {}
+                {} {}
             ",
-                    req_filter
-                )
-                .as_str(),
-            )
+            if !req_filter.is_empty() {
+                "AND"
+            } else {
+                ""
+            },
+            req_filter
+        );
+        let stmt = client
+            .prepare_cached(rq.as_str())
             .await?;
         let result = client.query(&stmt, &[&id_band]).await?;
         let count: i32 = result[0].get(0);
