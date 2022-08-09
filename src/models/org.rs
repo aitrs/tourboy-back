@@ -155,8 +155,8 @@ impl Org {
             SELECT
                 a.id,
                 o.name,
+                a.name,
                 o.description,
-                a.description,
                 a.city,
                 a.postal_code,
                 a.category,
@@ -173,7 +173,9 @@ impl Org {
             JOIN activity a ON a.id_org = o.id
             LEFT JOIN org_assign oa ON oa.id_org = o.id
             LEFT JOIN cnm_user cu ON cu.id = oa.id_user
-            {}{}{}
+            {}{}
+            ORDER BY o.name ASC
+            {}
             ",
             id_band, id_band, req_end, req_filter, pag,
         );
