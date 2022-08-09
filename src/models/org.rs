@@ -143,7 +143,7 @@ impl Org {
         paginator: Option<Paginator>,
     ) -> Result<(Vec<OrgRawInterface>, Paginator)> {
         let client = self.0.get().await?;
-        let req_end = if !filters.is_empty() { " AND " } else { "" };
+        let req_end = if !filters.is_empty() { " WHERE " } else { "" };
         let req_filter = gen_request_search(filters);
         let pag = if let Some(p) = paginator {
             p
@@ -161,22 +161,25 @@ impl Org {
                 a.postal_code,
                 a.category,
                 CAST(oa.status AS VARCHAR(16)) as status,
-                cu.id,
-                cu.pseudo,
+                CASE WHEN oa.id_band={} THEN cu.id
+                    ELSE NULL
+                END,
+                CASE WHEN oa.id_band={} THEN cu.pseudo
+                    ELSE NULL
+                END,
                 o.creation_stamp,
                 o.id
             FROM org o
             JOIN activity a ON a.id_org = o.id
             LEFT JOIN org_assign oa ON oa.id_org = o.id
             LEFT JOIN cnm_user cu ON cu.id = oa.id_user
-            WHERE (oa.id_band IS NULL OR oa.id_band = $1)
             {}{}{}
             ",
-            req_end, req_filter, pag,
+            id_band, id_band, req_end, req_filter, pag,
         );
         let stmt = client.prepare_cached(&streq).await?;
         let rows = client
-            .query(&stmt, &[&id_band])
+            .query(&stmt, &[])
             .await?
             .iter()
             .map(|row| {
@@ -207,9 +210,9 @@ impl Org {
                 LEFT JOIN org_assign oa ON oa.id_org = o.id
                 LEFT JOIN cnm_user cu ON cu.id = oa.id_user
                 WHERE (oa.id_band IS NULL OR oa.id_band = $1)
-                {}{}
+                AND {}
             ",
-                    req_end, req_filter
+                    req_filter
                 )
                 .as_str(),
             )
