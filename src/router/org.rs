@@ -9,7 +9,7 @@ use crate::{
     models::{
         band::Band,
         filter,
-        org::{ContactInterface, Org, Status, OrgRawInterface},
+        org::{ContactInterface, Org, Status, OrgRawInterface, ContactShort},
         user::User,
     },
     paginator::Paginator, db_error_to_warp,
@@ -191,7 +191,6 @@ async fn org_contacts(
     claims: Claims,
 ) -> Result<impl Reply, Rejection> {
     let org = Org::new(pool.clone());
-
     if is_user_in_band(pool, claims, id_band).await? {
         Ok(warp::reply::json(
             &org.get_contacts(id_org, id_band)
@@ -208,10 +207,9 @@ async fn org_create_contact(
     id_band: i32,
     pool: Pool,
     claims: Claims,
-    body: ContactInterface,
+    body: ContactShort,
 ) -> Result<impl Reply, Rejection> {
     let org = Org::new(pool.clone());
-
     if is_user_in_band(pool, claims, id_band).await? {
         let res = org
             .add_contact(id_org, id_band, body)
@@ -235,10 +233,10 @@ async fn org_update_contact(
         .map_err(db_error_to_warp)?;
 
     if is_user_in_band(pool, claims, id_band).await? {
-        org.update_contact(body)
+        let res = org.update_contact(body)
             .await
             .map_err(db_error_to_warp)?;
-        Ok(warp::reply())
+        Ok(warp::reply::json(&res))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
     }
@@ -256,10 +254,10 @@ async fn org_delete_contact(
         .map_err(db_error_to_warp)?;
 
     if is_user_in_band(pool, claims, id_band).await? {
-        org.remove_contact(id_contact)
+        let res = org.remove_contact(id_contact)
             .await
             .map_err(db_error_to_warp)?;
-        Ok(warp::reply())
+        Ok(warp::reply::json(&res))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
     }
@@ -302,21 +300,21 @@ pub fn org_routes(
         .and(with_jwt())
         .and_then(org_contacts);
 
-    let create_contact_route = warp::path!("contact" / i32 / i32)
+    let create_contact_route = warp::path!("ccontact" / i32 / i32)
         .and(warp::post())
         .and(config.with_pool())
         .and(with_jwt())
         .and(warp::body::json())
         .and_then(org_create_contact);
 
-    let update_contact_route = warp::path!("contact")
+    let update_contact_route = warp::path!("ucontact")
         .and(warp::put())
         .and(config.with_pool())
         .and(with_jwt())
         .and(warp::body::json())
         .and_then(org_update_contact);
 
-    let delete_contact_route = warp::path!("contact" / i32)
+    let delete_contact_route = warp::path!("dcontact" / i32)
         .and(warp::delete())
         .and(config.with_pool())
         .and(with_jwt())

@@ -116,6 +116,19 @@ pub struct ContactInterface {
     #[serde(rename = "creationStamp")]
     pub creation_stamp: NaiveDateTime,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContactShort {
+    pub name: String,
+    #[serde(rename = "firstName")]
+    pub first_name: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub address: Option<String>,
+    #[serde(rename = "zipCode")]
+    pub zip_code: Option<String>,
+    pub city: Option<String>,
+}
 pub struct Org(Pool);
 
 impl Org {
@@ -464,7 +477,7 @@ impl Org {
         &self,
         id_org: i32,
         id_band: i32,
-        contact: ContactInterface,
+        contact: ContactShort,
     ) -> Result<ContactInterface> {
         let client = self.0.get().await?;
         let stmt = client
@@ -479,7 +492,7 @@ impl Org {
                     address,
                     zip_code,
                     city,
-                    id_band
+                    id_band)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
                 RETURNING 
                     id,
@@ -540,6 +553,7 @@ impl Org {
                 address = $5, 
                 zip_code = $6, 
                 city = $7
+            WHERE id = $8
             RETURNING 
                 id,
                 name,
@@ -564,6 +578,7 @@ impl Org {
                     &contact.address,
                     &contact.zip_code,
                     &contact.city,
+                    &contact.id,
                 ],
             )
             .await?
