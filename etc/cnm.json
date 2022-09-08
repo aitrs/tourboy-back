@@ -1,8 +1,8 @@
 {
     "database": {
-        "host": "servrobustus",
-        "user": "cnm",
-        "password": "f6u2Zuzzhb40",
+        "host": "myhost",
+        "user": "myuser",
+        "password": "mypassword",
         "name": "cnm"
     },
     "mail": {
