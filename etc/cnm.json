@@ -6,14 +6,14 @@
         "name": "cnm"
     },
     "mail": {
-        "sender": "noreply@tourboy.ddns.net",
-        "smtpUser": "dorian.vuolo@gmail.com",
-        "smtpPassword": "bKUksVO0HBImnYgD",
-        "smtpRelay": "smtp-relay.sendinblue.com",
+        "sender": "SENDER",
+        "smtpUser": "SUSER",
+        "smtpPassword": "SPWD",
+        "smtpRelay": "SRELAY",
         "verifMail": "./etc/cnm/verifmail.html",
         "forgotPasswordMail": "./etc/cnm/forgotpasswordmail.html",
         "verifBaseUrl": "http://localhost:3000/verify",
         "forgotPasswordBaseUrl": "http://localhost:3000/forgotpassword",
-        "adminMail": "dorian.vuolo@gmail.com"
+        "adminMail": "SADMIN"
     }
 }
