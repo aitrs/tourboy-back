@@ -2,7 +2,7 @@ use std::{env, fs};
 
 use anyhow::Result;
 use deadpool_postgres::{ManagerConfig, Pool, RecyclingMethod, Runtime};
-use lettre::{SmtpTransport, transport::smtp::authentication::Credentials};
+use lettre::{transport::smtp::authentication::Credentials, SmtpTransport};
 use serde::{Deserialize, Serialize};
 use tokio_postgres::NoTls;
 use warp::{Filter, Rejection};
@@ -79,11 +79,9 @@ pub struct Mail {
 impl Mail {
     pub fn mailer(&self) -> Result<SmtpTransport> {
         let creds = Credentials::new(self.smtp_user.clone(), self.smtp_password.clone());
-        Ok(
-            SmtpTransport::relay(&self.smtp_relay)?
-                .credentials(creds)
-                .build()
-        )
+        Ok(SmtpTransport::relay(&self.smtp_relay)?
+            .credentials(creds)
+            .build())
     }
 
     pub fn verif_mail(&self) -> String {

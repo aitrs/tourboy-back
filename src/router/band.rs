@@ -5,8 +5,9 @@ use warp::{Filter, Rejection, Reply};
 use crate::{
     auth::{with_jwt, Claims},
     config::Config,
+    db_error_to_warp,
     errors::Error,
-    models::{band::Band, user::UserInterface}, db_error_to_warp,
+    models::{band::Band, user::UserInterface},
 };
 
 use super::org::is_user_in_band;

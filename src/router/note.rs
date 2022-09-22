@@ -5,8 +5,9 @@ use warp::{Filter, Rejection, Reply};
 use crate::{
     auth::{with_jwt, Claims},
     config::Config,
+    db_error_to_warp,
     errors::Error,
-    models::{note::Note, band::Band}, db_error_to_warp,
+    models::{band::Band, note::Note},
 };
 
 #[derive(Deserialize)]
@@ -50,18 +51,22 @@ async fn note_edit(
     Ok(warp::reply::json(&res))
 }
 
-async fn note_delete(id: i32, id_band: i32, pool: Pool, claims: Claims) -> Result<impl Reply, Rejection> {
+async fn note_delete(
+    id: i32,
+    id_band: i32,
+    pool: Pool,
+    claims: Claims,
+) -> Result<impl Reply, Rejection> {
     let band = Band::new(pool.clone());
     let note = Note::new(pool);
 
-    if band.is_admin(claims.id_user, id_band)
+    if band
+        .is_admin(claims.id_user, id_band)
         .await
-        .map_err(db_error_to_warp)? {
-            let res = note
-                .delete(id)
-                .await
-                .map_err(db_error_to_warp)?;
-            Ok(warp::reply::json(&res))
+        .map_err(db_error_to_warp)?
+    {
+        let res = note.delete(id).await.map_err(db_error_to_warp)?;
+        Ok(warp::reply::json(&res))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
     }

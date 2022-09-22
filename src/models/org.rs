@@ -100,7 +100,6 @@ pub struct OrgRawInterface {
     pub creation_stamp: NaiveDateTime,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContactInterface {
     pub id: i32,
@@ -202,7 +201,8 @@ impl Org {
                 }
             })
             .collect();
-        let rq = format!("
+        let rq = format!(
+            "
                 SELECT CAST(COUNT(o.id) AS INT)
                 FROM org o
                 JOIN activity a ON a.id_org = o.id
@@ -211,16 +211,10 @@ impl Org {
                 WHERE (oa.id_band IS NULL OR oa.id_band = $1)
                 {} {}
             ",
-            if !req_filter.is_empty() {
-                "AND"
-            } else {
-                ""
-            },
+            if !req_filter.is_empty() { "AND" } else { "" },
             req_filter
         );
-        let stmt = client
-            .prepare_cached(rq.as_str())
-            .await?;
+        let stmt = client.prepare_cached(rq.as_str()).await?;
         let result = client.query(&stmt, &[&id_band]).await?;
         let count: i32 = result[0].get(0);
         Ok((
@@ -228,7 +222,11 @@ impl Org {
             Paginator {
                 page: pag.page,
                 size: pag.size,
-                page_count: Some(count / pag.size),
+                page_count: if pag.size == 0 {
+                    None
+                } else {
+                    Some(count / pag.size)
+                },
                 item_count: Some(count),
             },
         ))
@@ -319,7 +317,11 @@ impl Org {
             Paginator {
                 page: pag.page,
                 size: pag.size,
-                page_count: Some(count / pag.size),
+                page_count: if pag.size == 0 {
+                    None
+                } else {
+                    Some(count / pag.size)
+                },
                 item_count: Some(count),
             },
         ))
@@ -347,15 +349,14 @@ impl Org {
                         INSERT INTO org_assign(id_org, id_user, id_band, status) 
                         VALUES ($1, $2, $3, '{}')
                     ",
-                    status,                    
-                ).as_str()
+                    status,
+                )
+                .as_str(),
             )
             .await?;
         for id_org in orgs {
             client.query(&stmt1, &[&id_org, &id_band]).await?;
-            client
-                .query(&stmt2, &[&id_org, &id_user, &id_band])
-                .await?;
+            client.query(&stmt2, &[&id_org, &id_user, &id_band]).await?;
         }
 
         Ok(())
@@ -406,7 +407,11 @@ impl Org {
             .collect::<Vec<UserInterface>>())
     }
 
-    pub async fn get_affected_users(&self, id_band: i32, id_orgs: Vec<i32>) -> Result<Vec<UserInterface>> {
+    pub async fn get_affected_users(
+        &self,
+        id_band: i32,
+        id_orgs: Vec<i32>,
+    ) -> Result<Vec<UserInterface>> {
         let client = self.0.get().await?;
         let stmt = client
             .prepare_cached(
@@ -417,25 +422,24 @@ impl Org {
         ",
             )
             .await?;
-        let mut res: Vec<UserInterface> = Vec::new();    
+        let mut res: Vec<UserInterface> = Vec::new();
         for id_org in id_orgs {
-            
             let mut loc = client
-            .query(&stmt, &[&id_band, &id_org])
-            .await?
-            .iter()
-            .map(|row| UserInterface {
-                id: row.get(0),
-                pseudo: row.get(1),
-                name: row.get(2),
-                firstname: row.get(3),
-                email: row.get(4),
-                creation_stamp: row.get(5),
-                last_login: row.get(6),
-                verified: row.get(7),
-                is_admin: None,
-            })
-            .collect::<Vec<UserInterface>>();
+                .query(&stmt, &[&id_band, &id_org])
+                .await?
+                .iter()
+                .map(|row| UserInterface {
+                    id: row.get(0),
+                    pseudo: row.get(1),
+                    name: row.get(2),
+                    firstname: row.get(3),
+                    email: row.get(4),
+                    creation_stamp: row.get(5),
+                    last_login: row.get(6),
+                    verified: row.get(7),
+                    is_admin: None,
+                })
+                .collect::<Vec<UserInterface>>();
             res.append(&mut loc);
         }
 

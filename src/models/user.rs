@@ -136,13 +136,21 @@ impl User {
         Ok(matched)
     }
 
-    pub async fn forgot_password(&self, id: i32, pwd: String, chain: String) -> Result<VerifyResponse> {
+    pub async fn forgot_password(
+        &self,
+        id: i32,
+        pwd: String,
+        chain: String,
+    ) -> Result<VerifyResponse> {
         let client = self.0.get().await?;
-        let stmt = client.prepare("
+        let stmt = client
+            .prepare(
+                "
                 UPDATE cnm_user SET verified = true, pwd = crypt($3, gen_salt('bf'))
                 WHERE id = $1 AND verify_chain = $2
                 RETURNING id, verified
-            ")
+            ",
+            )
             .await?;
         let rows = client
             .query(&stmt, &[&id, &chain, &pwd])
@@ -257,9 +265,11 @@ impl User {
             .await?;
         client.query(&stmt, &[&id_user, &id_band]).await?;
         let stmt = client
-            .prepare_cached("
+            .prepare_cached(
+                "
                 DELETE FROM org_assign WHERE id_user = $1 AND id_band = $2
-            ")
+            ",
+            )
             .await?;
         client.query(&stmt, &[&id_user, &id_band]).await?;
         let stmt = client
@@ -280,17 +290,19 @@ impl User {
         Ok(())
     }
 
-
     pub async fn verify(&self, id: i32, chain: String) -> Result<VerifyResponse> {
         let client = self.0.get().await?;
         let stmt = client
-            .prepare_cached("
+            .prepare_cached(
+                "
                 UPDATE cnm_user 
                 SET 
                     verified = true 
                 WHERE id = $1 AND verify_chain = $2
                 RETURNING id, verified
-            ").await?;
+            ",
+            )
+            .await?;
         let rows = client
             .query(&stmt, &[&id, &chain])
             .await?

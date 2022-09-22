@@ -74,7 +74,7 @@ impl FilterOp {
 
         match self {
             FilterOp::Exact => format!("{} = {}{}{}", field, enclose, value, enclose),
-            FilterOp::Like => format!("{} LIKE '{}{}%'", field, prefix, value),
+            FilterOp::Like => format!("LOWER({}) LIKE LOWER('{}{}%')", field, prefix, value),
         }
     }
 }

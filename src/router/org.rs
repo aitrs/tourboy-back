@@ -5,14 +5,15 @@ use warp::{Filter, Rejection, Reply};
 use crate::{
     auth::{with_jwt, Claims},
     config::Config,
+    db_error_to_warp,
     errors::Error,
     models::{
         band::Band,
         filter,
-        org::{ContactInterface, Org, Status, OrgRawInterface, ContactShort},
+        org::{ContactInterface, ContactShort, Org, OrgRawInterface, Status},
         user::User,
     },
-    paginator::Paginator, db_error_to_warp,
+    paginator::Paginator,
 };
 
 #[derive(Serialize)]
@@ -21,7 +22,11 @@ struct ListResponse {
     pagination: Paginator,
 }
 
-pub async fn is_user_in_band(pool: Pool, claims: Claims, id_band: i32) -> anyhow::Result<bool, Error> {
+pub async fn is_user_in_band(
+    pool: Pool,
+    claims: Claims,
+    id_band: i32,
+) -> anyhow::Result<bool, Error> {
     let user = User::new(pool);
     let bands = user
         .get_bands(claims.id_user)
@@ -160,9 +165,7 @@ async fn org_tag(
 async fn org_categories(pool: Pool, _: Claims) -> Result<impl Reply, Rejection> {
     let org = Org::new(pool);
     Ok(warp::reply::json(
-        &org.get_categories()
-            .await
-            .map_err(db_error_to_warp)?,
+        &org.get_categories().await.map_err(db_error_to_warp)?,
     ))
 }
 
@@ -233,9 +236,7 @@ async fn org_update_contact(
         .map_err(db_error_to_warp)?;
 
     if is_user_in_band(pool, claims, id_band).await? {
-        let res = org.update_contact(body)
-            .await
-            .map_err(db_error_to_warp)?;
+        let res = org.update_contact(body).await.map_err(db_error_to_warp)?;
         Ok(warp::reply::json(&res))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
@@ -254,7 +255,8 @@ async fn org_delete_contact(
         .map_err(db_error_to_warp)?;
 
     if is_user_in_band(pool, claims, id_band).await? {
-        let res = org.remove_contact(id_contact)
+        let res = org
+            .remove_contact(id_contact)
             .await
             .map_err(db_error_to_warp)?;
         Ok(warp::reply::json(&res))

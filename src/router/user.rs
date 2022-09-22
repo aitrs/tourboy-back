@@ -5,11 +5,14 @@ use warp::{Filter, Rejection, Reply};
 use crate::{
     auth::{create_jwt, with_jwt, Claims},
     config::Config,
+    db_error_to_warp,
     errors::Error,
+    etointlog,
+    mailer::Mailer,
     models::{
         band::Band,
         user::{User, UserInterface, VerifyResponse},
-    }, mailer::Mailer, db_error_to_warp, etointlog,
+    },
 };
 
 #[derive(Deserialize)]
@@ -41,14 +44,11 @@ async fn user_create(pool: Pool, body: UserCreationRequest) -> Result<impl Reply
         Error::Internal
     })?;
     Ok(warp::reply::json(&resp))
-
 }
 
 async fn user_verify(id: i32, chain: String, pool: Pool) -> Result<impl Reply, Rejection> {
     let user = User::new(pool);
-    let resp = user.verify(id, chain)
-        .await
-        .map_err(db_error_to_warp)?;
+    let resp = user.verify(id, chain).await.map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&resp))
 }
 
@@ -76,20 +76,14 @@ async fn user_read(id: i32, pool: Pool, claims: Claims) -> Result<impl Reply, Re
         .get_bands(claims.id_user)
         .await
         .map_err(db_error_to_warp)?;
-    let them_bands = user
-        .get_bands(id)
-        .await
-        .map_err(db_error_to_warp)?;
+    let them_bands = user.get_bands(id).await.map_err(db_error_to_warp)?;
 
     if my_bands
         .iter()
         .any(|b| them_bands.iter().any(|bb| b.id == bb.id))
     {
         Ok(warp::reply::json(
-            &user
-                .read(id)
-                .await
-                .map_err(db_error_to_warp)?,
+            &user.read(id).await.map_err(db_error_to_warp)?,
         ))
     } else {
         Err(warp::reject::custom(Error::Unauthorized))
@@ -101,19 +95,23 @@ struct UserPasswordForgotRequest {
     email: String,
 }
 
-async fn user_forgot_password_request(pool: Pool, body: UserPasswordForgotRequest) -> Result<impl Reply, Rejection> {
+async fn user_forgot_password_request(
+    pool: Pool,
+    body: UserPasswordForgotRequest,
+) -> Result<impl Reply, Rejection> {
     let user = User::new(pool.clone());
     if let Some(uid) = user
         .get_id_from_email(body.email)
         .await
-        .map_err(db_error_to_warp)? {
+        .map_err(db_error_to_warp)?
+    {
         let resp = user.deactivate(uid).await.map_err(db_error_to_warp)?;
         let mailer = Mailer::ForgotPassword;
 
         mailer.send_email(uid, pool).await.map_err(etointlog)?;
         Ok(warp::reply::json(&resp))
     } else {
-        Ok(warp::reply::json(&VerifyResponse{
+        Ok(warp::reply::json(&VerifyResponse {
             id: None,
             verified: false,
         }))
@@ -127,9 +125,15 @@ struct ForgotPasswordModRequest {
     chain: String,
 }
 
-async fn user_forgot_password_verify(pool: Pool, body: ForgotPasswordModRequest) -> Result<impl Reply, Rejection> {
+async fn user_forgot_password_verify(
+    pool: Pool,
+    body: ForgotPasswordModRequest,
+) -> Result<impl Reply, Rejection> {
     let user = User::new(pool);
-    let resp = user.forgot_password(body.id, body.pwd, body.chain).await.map_err(db_error_to_warp)?;
+    let resp = user
+        .forgot_password(body.id, body.pwd, body.chain)
+        .await
+        .map_err(db_error_to_warp)?;
 
     Ok(warp::reply::json(&resp))
 }
@@ -276,10 +280,7 @@ async fn user_authenticate(pool: Pool, body: AuthenticateRequest) -> Result<impl
             .await
             .map_err(db_error_to_warp)?
             .unwrap();
-        let bands = user
-            .get_bands(id)
-            .await
-            .map_err(db_error_to_warp)?;
+        let bands = user.get_bands(id).await.map_err(db_error_to_warp)?;
         Ok(warp::reply::json(&AuthenticateResponse {
             status: true,
             jwt: Some(create_jwt(id, bands).map_err(|_| Error::Internal)?),
@@ -311,10 +312,7 @@ struct UserExistsResponse {
 
 async fn user_exists(email: String, pool: Pool, _claims: Claims) -> Result<impl Reply, Rejection> {
     let user = User::new(pool);
-    let (e, u) = user
-        .exists(email)
-        .await
-        .map_err(db_error_to_warp)?;
+    let (e, u) = user.exists(email).await.map_err(db_error_to_warp)?;
     Ok(warp::reply::json(&UserExistsResponse {
         exists: e,
         user: u,
